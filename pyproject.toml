@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "freeway-speed"
+version = "0.1.0"
+description = "Low-quality CCTV curve-road vehicle distance and speed estimation"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "opencv-python>=4.8",
+  "scipy>=1.10",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+yolo = ["ultralytics>=8.2"]
+onnx = ["onnxruntime>=1.17"]
+
+[project.scripts]
+freeway-speed = "freeway_speed.cli:run"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

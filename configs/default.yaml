@@ -1,0 +1,49 @@
+perception:
+  vehicle_backend: yolo
+  lane_backend: onnx
+  yolo_model: yolov8n.pt
+  yolo_classes: [car, truck, bus, motorcycle]
+  yolo_conf: 0.15
+  yolo_imgsz: 1280
+  lane_onnx: ../yolop-640-640.onnx
+
+ipm:
+  roi_ratio_from_bottom: 0.30
+  ema_alpha: 0.20
+  bev_width: 640
+  bev_height: 720
+
+curve:
+  min_points: 20
+  bins: 40
+
+calibration:
+  dash_length_m: 4.0
+  min_dash_pixels: 20
+  max_dash_pixels: 180
+  min_gap_pixels: 8
+  min_dash_runs: 2
+  search_band_px: 10
+  lane_width_m: 3.5
+  lane_hist_roi_start_ratio: 0.55
+  lane_width_min_px: 120
+  lane_width_max_px: 620
+  lane_peak_min_votes: 12
+  min_scale_m_per_px: 0.01
+  max_scale_m_per_px: 0.08
+  default_scale_m_per_px: 0.025
+
+tracking:
+  tracker_backend: bytetrack
+  bt_track_high_thresh: 0.25
+  bt_track_low_thresh: 0.05
+  bt_new_track_thresh: 0.2
+  bt_track_buffer: 30
+  bt_match_thresh: 0.8
+  bt_fuse_score: true
+  min_dt_sec: 0.4
+  speed_smooth_window: 5
+  max_speed_kmh: 180.0
+
+runtime:
+  lane_update_every_n_frames: 5
