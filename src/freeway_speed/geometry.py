@@ -58,7 +58,9 @@ def estimate_scale_from_dashed_line(
             continue
 
         left_gap_ok = idx > 0 and (not runs[idx - 1][0]) and runs[idx - 1][3] >= cfg.min_gap_pixels
-        right_gap_ok = idx < len(runs) - 1 and (not runs[idx + 1][0]) and runs[idx + 1][3] >= cfg.min_gap_pixels
+        right_gap_ok = (
+            idx < len(runs) - 1 and (not runs[idx + 1][0]) and runs[idx + 1][3] >= cfg.min_gap_pixels
+        )
         if not (left_gap_ok or right_gap_ok):
             continue
 

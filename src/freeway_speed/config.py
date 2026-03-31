@@ -12,9 +12,13 @@ class PerceptionConfig:
     vehicle_backend: str = "threshold"
     lane_backend: str = "threshold"
     yolo_model: str = "yolov8n.pt"
-    yolo_classes: tuple[str, ...] = ("car", "truck", "bus", "motorcycle")
-    yolo_conf: float = 0.15
-    yolo_imgsz: int = 1280
+    yolo_classes: tuple[str, ...] = ("car", "bus", "truck")
+    yolo_conf: float = 0.10
+    yolo_iou: float = 0.45
+    yolo_imgsz: int = 640
+    vehicle_upscale_factor: float = 2.0
+    lane_temporal_smoothing: bool = True
+    lane_temporal_alpha: float = 0.05
     lane_onnx: str = ""
 
 
@@ -53,12 +57,13 @@ class CalibrationConfig:
 @dataclass
 class TrackingConfig:
     tracker_backend: str = "bytetrack"
-    bt_track_high_thresh: float = 0.25
+    bt_track_high_thresh: float = 0.15
     bt_track_low_thresh: float = 0.05
     bt_new_track_thresh: float = 0.2
-    bt_track_buffer: int = 30
-    bt_match_thresh: float = 0.8
+    bt_track_buffer: int = 60
+    bt_match_thresh: float = 0.9
     bt_fuse_score: bool = True
+    bt_params_yaml: str = ""
     min_dt_sec: float = 0.4
     speed_smooth_window: int = 5
     max_speed_kmh: float = 180.0
@@ -102,14 +107,28 @@ def load_config(path: str | Path) -> SystemConfig:
     if lane_onnx_path:
         lane_onnx_path = str((cfg_path.parent / lane_onnx_path).resolve())
 
+    bt_params_yaml = _get(tracking_raw, "bt_params_yaml", "")
+    bt_params_raw: dict[str, Any] = {}
+    bt_params_path = ""
+    if bt_params_yaml:
+        bt_params_path = str((cfg_path.parent / bt_params_yaml).resolve())
+        path_obj = Path(bt_params_path)
+        if path_obj.exists():
+            with path_obj.open("r", encoding="utf-8") as f:
+                bt_params_raw = yaml.safe_load(f) or {}
+
     return SystemConfig(
         perception=PerceptionConfig(
             vehicle_backend=_get(perception_raw, "vehicle_backend", "threshold"),
             lane_backend=_get(perception_raw, "lane_backend", "threshold"),
             yolo_model=_get(perception_raw, "yolo_model", "yolov8n.pt"),
-            yolo_classes=tuple(_get(perception_raw, "yolo_classes", ["car", "truck", "bus", "motorcycle"])),
-            yolo_conf=float(_get(perception_raw, "yolo_conf", 0.15)),
-            yolo_imgsz=int(_get(perception_raw, "yolo_imgsz", 1280)),
+            yolo_classes=tuple(_get(perception_raw, "yolo_classes", ["car", "bus", "truck"])),
+            yolo_conf=float(_get(perception_raw, "yolo_conf", 0.10)),
+            yolo_iou=float(_get(perception_raw, "yolo_iou", 0.45)),
+            yolo_imgsz=int(_get(perception_raw, "yolo_imgsz", 640)),
+            vehicle_upscale_factor=float(_get(perception_raw, "vehicle_upscale_factor", 2.0)),
+            lane_temporal_smoothing=bool(_get(perception_raw, "lane_temporal_smoothing", True)),
+            lane_temporal_alpha=float(_get(perception_raw, "lane_temporal_alpha", 0.05)),
             lane_onnx=lane_onnx_path,
         ),
         ipm=IPMConfig(
@@ -140,12 +159,49 @@ def load_config(path: str | Path) -> SystemConfig:
         ),
         tracking=TrackingConfig(
             tracker_backend=_get(tracking_raw, "tracker_backend", "bytetrack"),
-            bt_track_high_thresh=float(_get(tracking_raw, "bt_track_high_thresh", 0.25)),
-            bt_track_low_thresh=float(_get(tracking_raw, "bt_track_low_thresh", 0.05)),
-            bt_new_track_thresh=float(_get(tracking_raw, "bt_new_track_thresh", 0.2)),
-            bt_track_buffer=int(_get(tracking_raw, "bt_track_buffer", 30)),
-            bt_match_thresh=float(_get(tracking_raw, "bt_match_thresh", 0.8)),
-            bt_fuse_score=bool(_get(tracking_raw, "bt_fuse_score", True)),
+            bt_track_high_thresh=float(
+                _get(
+                    tracking_raw,
+                    "bt_track_high_thresh",
+                    _get(bt_params_raw, "track_high_thresh", 0.15),
+                )
+            ),
+            bt_track_low_thresh=float(
+                _get(
+                    tracking_raw,
+                    "bt_track_low_thresh",
+                    _get(bt_params_raw, "track_low_thresh", 0.05),
+                )
+            ),
+            bt_new_track_thresh=float(
+                _get(
+                    tracking_raw,
+                    "bt_new_track_thresh",
+                    _get(bt_params_raw, "new_track_thresh", 0.2),
+                )
+            ),
+            bt_track_buffer=int(
+                _get(
+                    tracking_raw,
+                    "bt_track_buffer",
+                    _get(bt_params_raw, "track_buffer", 60),
+                )
+            ),
+            bt_match_thresh=float(
+                _get(
+                    tracking_raw,
+                    "bt_match_thresh",
+                    _get(bt_params_raw, "match_thresh", 0.9),
+                )
+            ),
+            bt_fuse_score=bool(
+                _get(
+                    tracking_raw,
+                    "bt_fuse_score",
+                    _get(bt_params_raw, "fuse_score", True),
+                )
+            ),
+            bt_params_yaml=bt_params_path,
             min_dt_sec=float(_get(tracking_raw, "min_dt_sec", 0.4)),
             speed_smooth_window=int(_get(tracking_raw, "speed_smooth_window", 5)),
             max_speed_kmh=float(_get(tracking_raw, "max_speed_kmh", 180.0)),

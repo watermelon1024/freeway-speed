@@ -2,9 +2,13 @@ perception:
   vehicle_backend: yolo
   lane_backend: onnx
   yolo_model: yolov8n.pt
-  yolo_classes: [car, truck, bus, motorcycle]
-  yolo_conf: 0.15
-  yolo_imgsz: 1280
+  yolo_classes: [car, bus, truck]
+  yolo_conf: 0.10
+  yolo_iou: 0.45
+  yolo_imgsz: 640
+  vehicle_upscale_factor: 2.0
+  lane_temporal_smoothing: true
+  lane_temporal_alpha: 0.05
   lane_onnx: ../yolop-640-640.onnx
 
 ipm:
@@ -35,11 +39,12 @@ calibration:
 
 tracking:
   tracker_backend: bytetrack
-  bt_track_high_thresh: 0.25
+  bt_params_yaml: ../custom_tracker.yaml
+  bt_track_high_thresh: 0.15
   bt_track_low_thresh: 0.05
   bt_new_track_thresh: 0.2
-  bt_track_buffer: 30
-  bt_match_thresh: 0.8
+  bt_track_buffer: 60
+  bt_match_thresh: 0.9
   bt_fuse_score: true
   min_dt_sec: 0.4
   speed_smooth_window: 5

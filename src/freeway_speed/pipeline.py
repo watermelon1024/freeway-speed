@@ -8,7 +8,11 @@ import numpy as np
 
 from .config import SystemConfig
 from .curve import fit_lane_polynomial
-from .geometry import distance_to_camera_m, estimate_scale_from_dashed_line, estimate_scale_from_lane_width
+from .geometry import (
+    distance_to_camera_m,
+    estimate_scale_from_dashed_line,
+    estimate_scale_from_lane_width,
+)
 from .ipm import DynamicIPM
 from .perception import (
     LaneSegmenter,
@@ -32,6 +36,7 @@ class FreewaySpeedPipeline:
         self.vehicle_detector = self._build_vehicle_detector(self.config)
         self.lane_segmenter = self._build_lane_segmenter(self.config)
         self.ipm = DynamicIPM(self.config.ipm)
+        self._lane_background_avg: np.ndarray | None = None
         if self.config.tracking.tracker_backend == "bytetrack":
             self.tracker = ByteTrackTracker(self.config.tracking, frame_rate=self.frame_rate)
         else:
@@ -51,6 +56,8 @@ class FreewaySpeedPipeline:
                 classes=cfg.perception.yolo_classes,
                 conf_threshold=cfg.perception.yolo_conf,
                 imgsz=cfg.perception.yolo_imgsz,
+                iou_threshold=cfg.perception.yolo_iou,
+                upscale_factor=cfg.perception.vehicle_upscale_factor,
             )
         return ThresholdVehicleDetector()
 
@@ -60,11 +67,20 @@ class FreewaySpeedPipeline:
             return ONNXLaneSegmenter(cfg.perception.lane_onnx)
         return ThresholdLaneSegmenter()
 
-    def _update_lane_model_if_needed(self, frame: np.ndarray) -> None:
+    def _prepare_lane_frame(self, frame: np.ndarray) -> np.ndarray:
+        if not self.config.perception.lane_temporal_smoothing:
+            return frame
+
+        if self._lane_background_avg is None:
+            self._lane_background_avg = frame.astype(np.float32)
+        cv2.accumulateWeighted(frame, self._lane_background_avg, self.config.perception.lane_temporal_alpha)
+        return cv2.convertScaleAbs(self._lane_background_avg)
+
+    def _update_lane_model_if_needed(self, lane_frame: np.ndarray) -> None:
         if self.frame_idx % self.config.runtime.lane_update_every_n_frames != 0:
             return
 
-        lane_mask = self.lane_segmenter.segment(frame)
+        lane_mask = self.lane_segmenter.segment(lane_frame)
         h_mat = self.ipm.estimate_homography(lane_mask)
         bev_mask = self.ipm.warp_mask(lane_mask, h_mat)
         poly = fit_lane_polynomial(bev_mask, self.config.curve)
@@ -90,7 +106,8 @@ class FreewaySpeedPipeline:
 
     def process_frame(self, frame: np.ndarray, timestamp: float) -> FrameState:
         self.frame_idx += 1
-        self._update_lane_model_if_needed(frame)
+        lane_frame = self._prepare_lane_frame(frame)
+        self._update_lane_model_if_needed(lane_frame)
 
         detections: list[Detection] = self.vehicle_detector.detect(frame)
         if self.config.tracking.tracker_backend == "bytetrack":
@@ -144,7 +161,15 @@ def draw_overlay(frame: np.ndarray, state: FrameState) -> np.ndarray:
             text += f" | {obj.distance_m:.1f} m"
         if obj.speed_kmh is not None:
             text += f" | {obj.speed_kmh:.1f} km/h"
-        cv2.putText(vis, text, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
+        cv2.putText(
+            vis,
+            text,
+            (x1, max(20, y1 - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (0, 255, 0),
+            1,
+        )
 
     if state.scale_m_per_px is not None:
         cv2.putText(

@@ -176,7 +176,12 @@ class ByteTrackTracker:
 
             prev = self._id_to_track.get(track_id)
             if prev is None:
-                prev = _Track(track_id=track_id, bbox=(x1, y1, x2, y2), class_name=cls_name, score=score)
+                prev = _Track(
+                    track_id=track_id,
+                    bbox=(x1, y1, x2, y2),
+                    class_name=cls_name,
+                    score=score,
+                )
             prev.bbox = (x1, y1, x2, y2)
             prev.class_name = cls_name
             prev.score = float(score)

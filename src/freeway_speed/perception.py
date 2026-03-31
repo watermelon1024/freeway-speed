@@ -10,8 +10,7 @@ from .types import Detection
 
 
 class VehicleDetector(Protocol):
-    def detect(self, frame: np.ndarray) -> list[Detection]:
-        ...
+    def detect(self, frame: np.ndarray) -> list[Detection]: ...
 
 
 @dataclass
@@ -51,6 +50,8 @@ class YoloV8Detector:
         classes: tuple[str, ...],
         conf_threshold: float = 0.25,
         imgsz: int = 640,
+        iou_threshold: float = 0.45,
+        upscale_factor: float = 1.0,
     ):
         try:
             from ultralytics import YOLO
@@ -61,9 +62,25 @@ class YoloV8Detector:
         self.classes = set(classes)
         self.conf_threshold = conf_threshold
         self.imgsz = imgsz
+        self.iou_threshold = iou_threshold
+        self.upscale_factor = max(1.0, float(upscale_factor))
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
-        result = self.model(frame, verbose=False, conf=self.conf_threshold, imgsz=self.imgsz)[0]
+        h, w = frame.shape[:2]
+        if self.upscale_factor > 1.0:
+            resized_w = max(1, int(round(w * self.upscale_factor)))
+            resized_h = max(1, int(round(h * self.upscale_factor)))
+            infer_frame = cv2.resize(frame, (resized_w, resized_h), interpolation=cv2.INTER_LANCZOS4)
+        else:
+            infer_frame = frame
+
+        result = self.model(
+            infer_frame,
+            verbose=False,
+            conf=self.conf_threshold,
+            iou=self.iou_threshold,
+            imgsz=self.imgsz,
+        )[0]
         detections: list[Detection] = []
         if result.boxes is None:
             return detections
@@ -76,13 +93,21 @@ class YoloV8Detector:
                 continue
             score = float(box.conf[0])
             x1, y1, x2, y2 = [float(v) for v in box.xyxy[0].tolist()]
+            if self.upscale_factor > 1.0:
+                x1 /= self.upscale_factor
+                y1 /= self.upscale_factor
+                x2 /= self.upscale_factor
+                y2 /= self.upscale_factor
+                x1 = float(np.clip(x1, 0, max(0, w - 1)))
+                y1 = float(np.clip(y1, 0, max(0, h - 1)))
+                x2 = float(np.clip(x2, 0, max(0, w - 1)))
+                y2 = float(np.clip(y2, 0, max(0, h - 1)))
             detections.append(Detection(bbox=(x1, y1, x2, y2), score=score, class_name=cls_name))
         return detections
 
 
 class LaneSegmenter(Protocol):
-    def segment(self, frame: np.ndarray) -> np.ndarray:
-        ...
+    def segment(self, frame: np.ndarray) -> np.ndarray: ...
 
 
 @dataclass
