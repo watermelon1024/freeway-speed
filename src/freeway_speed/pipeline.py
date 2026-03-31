@@ -8,11 +8,7 @@ import numpy as np
 
 from .config import SystemConfig
 from .curve import fit_lane_polynomial
-from .geometry import (
-    distance_to_camera_m,
-    estimate_scale_from_dashed_line,
-    estimate_scale_from_lane_width,
-)
+from .geometry import distance_to_camera_m, estimate_scale_from_dashed_line, estimate_scale_from_lane_width
 from .ipm import DynamicIPM
 from .perception import (
     LaneSegmenter,
