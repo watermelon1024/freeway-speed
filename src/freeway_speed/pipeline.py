@@ -162,41 +162,66 @@ class FreewaySpeedPipeline:
 
 
 def draw_overlay(frame: np.ndarray, state: FrameState) -> np.ndarray:
-    vis = frame.copy()
+    base_h, base_w = frame.shape[:2]
+    render_scale = 1.5
+    top_margin = max(80, int(round(base_h * 0.12)))
+    right_margin = max(460, int(round(base_w * 0.52)))
+    out_w = int(round(base_w * render_scale)) + right_margin
+    out_h = int(round(base_h * render_scale)) + top_margin
+
+    vis = np.zeros((out_h, out_w, 3), dtype=np.uint8)
+    scaled_frame = cv2.resize(
+        frame,
+        (int(round(base_w * render_scale)), int(round(base_h * render_scale))),
+        interpolation=cv2.INTER_CUBIC,
+    )
+    vis[top_margin : top_margin + scaled_frame.shape[0], : scaled_frame.shape[1]] = scaled_frame
+
+    lane_x0 = 0
+    lane_y0 = top_margin
+
+    def sx(x: float) -> int:
+        return int(round(lane_x0 + x * render_scale))
+
+    def sy(y: float) -> int:
+        return int(round(lane_y0 + y * render_scale))
+
+    box_thickness = 1
+    text_scale_small = 0.35 * render_scale
+    text_scale_mid = 0.6 * render_scale
+    text_thickness = max(1, int(round(1.2 * render_scale)))
+    vehicle_text_thickness = 2
+
     for obj in state.tracked:
-        x1, y1, x2, y2 = [int(v) for v in obj.bbox]
-        cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 200, 255), 1)
-        text = f"ID {obj.track_id}"
-        if obj.distance_m is not None:
-            text += f" | {obj.distance_m:.1f} m"
-        if obj.speed_kmh is not None:
-            text += f" | {obj.speed_kmh:.1f} km/h"
-        if obj.direction:
-            text += f" | {obj.direction}"
-        if obj.lane:
-            text += f" | {obj.lane}"
+        x1, y1, x2, y2 = obj.bbox
+        ix1, iy1, ix2, iy2 = sx(x1), sy(y1), sx(x2), sy(y2)
+        cv2.rectangle(vis, (ix1, iy1), (ix2, iy2), (0, 200, 255), box_thickness)
+        speed_text = f"{obj.speed_kmh:.0f}km/h" if obj.speed_kmh is not None else "-"
+        dir_text = (obj.direction or "N/A").replace("Unknown", "N/A")
+        lane_text = (obj.lane or "N/A").replace("Unknown", "N/A")
+        text = f"#{obj.track_id} | {speed_text} | {dir_text} | {lane_text}"
         cv2.putText(
             vis,
             text,
-            (x1, max(20, y1 - 8)),
+            (ix1, max(top_margin + 20, iy1 - int(round(10 * render_scale)))),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
+            text_scale_small,
             (0, 255, 0),
-            1,
+            vehicle_text_thickness,
         )
 
     if state.scale_m_per_px is not None:
         cv2.putText(
             vis,
             f"scale: {state.scale_m_per_px:.5f} m/px",
-            (20, 28),
+            (24, 36),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
+            text_scale_mid,
             (255, 255, 0),
-            2,
+            text_thickness,
         )
 
-    y0 = 56
+    y0 = 36 + int(round(34 * render_scale))
     for direction in ("Departing", "Approaching"):
         avg = state.direction_avg_speed_kmh.get(direction)
         if avg is None:
@@ -204,19 +229,21 @@ def draw_overlay(frame: np.ndarray, state: FrameState) -> np.ndarray:
         cv2.putText(
             vis,
             f"{direction} avg: {avg:.1f} km/h",
-            (20, y0),
+            (24, y0),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
+            text_scale_mid,
             (80, 255, 80),
-            2,
+            text_thickness,
         )
-        y0 += 24
+        y0 += int(round(26 * render_scale))
 
-    # Right-side panel: per-vehicle lane layout for quick scan.
-    panel_w = min(420, max(280, vis.shape[1] // 3))
+    # Right-side panel lives in dedicated black margin, so text never clips into camera view.
+    panel_w = max(420, right_margin - 24)
     x0 = vis.shape[1] - panel_w - 10
-    y_panel = 12
-    panel_h = min(vis.shape[0] - 24, 28 + min(len(state.tracked), 18) * 20)
+    y_panel = top_margin + 12
+    row_h = int(round(22 * render_scale))
+    header_h = int(round(40 * render_scale))
+    panel_h = min(vis.shape[0] - y_panel - 12, header_h + min(len(state.tracked), 24) * row_h + 8)
     if panel_h > 40:
         overlay = vis.copy()
         cv2.rectangle(overlay, (x0, y_panel), (x0 + panel_w, y_panel + panel_h), (20, 20, 20), -1)
@@ -224,29 +251,30 @@ def draw_overlay(frame: np.ndarray, state: FrameState) -> np.ndarray:
         cv2.rectangle(vis, (x0, y_panel), (x0 + panel_w, y_panel + panel_h), (100, 230, 255), 1)
         cv2.putText(
             vis,
-            "Vehicle Layout: ID | Dir | Lane | Speed",
-            (x0 + 8, y_panel + 16),
+            "#ID | speed | dir | lane",
+            (x0 + 10, y_panel + int(round(18 * render_scale))),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.46,
+            text_scale_small,
             (230, 255, 255),
-            1,
+            2,
         )
 
-        y = y_panel + 34
+        y = y_panel + header_h
+        max_rows = max(1, (panel_h - header_h - 8) // row_h)
         sorted_objs = sorted(state.tracked, key=lambda o: o.track_id)
-        for obj in sorted_objs[:18]:
-            direction = obj.direction or "Unknown"
-            lane = obj.lane or "Unknown"
-            speed_text = f"{obj.speed_kmh:.1f}" if obj.speed_kmh is not None else "-"
-            row = f"{obj.track_id:>3} | {direction[:10]:<10} | {lane[:11]:<11} | {speed_text:>5}"
+        for obj in sorted_objs[:max_rows]:
+            direction = (obj.direction or "N/A").replace("Unknown", "N/A")
+            lane = (obj.lane or "N/A").replace("Unknown", "N/A")
+            speed_text = f"{obj.speed_kmh:.0f}" if obj.speed_kmh is not None else "-"
+            row = f"#{obj.track_id:<3} | {speed_text:>3} | {direction[:4]:<4} | {lane[:8]:<8}"
             cv2.putText(
                 vis,
                 row,
-                (x0 + 8, y),
+                (x0 + 10, y),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.43,
+                text_scale_small,
                 (240, 245, 240),
-                1,
+                2,
             )
-            y += 20
+            y += row_h
     return vis

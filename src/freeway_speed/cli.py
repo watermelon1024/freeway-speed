@@ -39,15 +39,13 @@ def run() -> None:
     if fps <= 1e-6:
         fps = 15.0
     pipeline = FreewaySpeedPipeline(cfg, frame_rate=int(round(fps)))
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     writer = None
+    out_path: Path | None = None
+    fourcc = cv2.VideoWriter.fourcc(*"mp4v")
     if args.output:
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        fourcc = cv2.VideoWriter.fourcc(*"mp4v")
-        writer = cv2.VideoWriter(str(out_path), fourcc, fps, (width, height))
 
     if args.log_output:
         log_path = Path(args.log_output)
@@ -101,6 +99,10 @@ def run() -> None:
         proc_ts = time.perf_counter()
         state = pipeline.process_frame(frame, video_t)
         vis = draw_overlay(frame, state)
+
+        if args.output and writer is None and out_path is not None:
+            out_h, out_w = vis.shape[:2]
+            writer = cv2.VideoWriter(str(out_path), fourcc, fps, (out_w, out_h))
 
         lane_a = state.lane_poly.a if state.lane_poly is not None else None
         lane_b = state.lane_poly.b if state.lane_poly is not None else None
