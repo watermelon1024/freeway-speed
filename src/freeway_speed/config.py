@@ -75,6 +75,10 @@ class TrackingConfig:
 @dataclass
 class RuntimeConfig:
     lane_update_every_n_frames: int = 30
+    lane_early_exit_enabled: bool = True
+    lane_similarity_threshold: float = 0.985
+    lane_signature_size: int = 64
+    lane_force_update_sec: float = 15.0
 
 
 @dataclass
@@ -168,6 +172,10 @@ def load_config(path: str | Path) -> SystemConfig:
         ),
         runtime=RuntimeConfig(
             lane_update_every_n_frames=int(_get(runtime_raw, "lane_update_every_n_frames", 30)),
+            lane_early_exit_enabled=bool(_get(runtime_raw, "lane_early_exit_enabled", True)),
+            lane_similarity_threshold=float(_get(runtime_raw, "lane_similarity_threshold", 0.985)),
+            lane_signature_size=int(_get(runtime_raw, "lane_signature_size", 64)),
+            lane_force_update_sec=float(_get(runtime_raw, "lane_force_update_sec", 15.0)),
         ),
         traffic=TrafficConfig(
             direction_lookback_sec=float(_get(traffic_raw, "direction_lookback_sec", 0.5)),

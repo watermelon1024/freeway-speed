@@ -52,7 +52,11 @@ tracking:
   max_speed_kmh: 180.0
 
 runtime:
-  lane_update_every_n_frames: 30
+  lane_update_every_n_frames: 100
+  lane_early_exit_enabled: true
+  lane_similarity_threshold: 0.985
+  lane_signature_size: 64
+  lane_force_update_sec: 60.0
 
 traffic:
   direction_lookback_sec: 0.5

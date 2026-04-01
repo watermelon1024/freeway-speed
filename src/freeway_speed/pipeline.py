@@ -34,6 +34,8 @@ class FreewaySpeedPipeline:
         self.lane_segmenter = self._build_lane_segmenter(self.config)
         self.ipm = DynamicIPM(self.config.ipm)
         self._lane_background_avg: np.ndarray | None = None
+        self._lane_signature_prev: np.ndarray | None = None
+        self._last_lane_update_ts: float | None = None
         if self.config.tracking.tracker_backend == "bytetrack":
             self.tracker = ByteTrackTracker(self.config.tracking, frame_rate=self.frame_rate)
         else:
@@ -74,14 +76,48 @@ class FreewaySpeedPipeline:
         cv2.accumulateWeighted(frame, self._lane_background_avg, self.config.perception.lane_temporal_alpha)
         return cv2.convertScaleAbs(self._lane_background_avg)
 
-    def _update_lane_model_if_needed(self, lane_frame: np.ndarray) -> None:
+    def _lane_signature(self, lane_frame: np.ndarray) -> np.ndarray:
+        gray = cv2.cvtColor(lane_frame, cv2.COLOR_BGR2GRAY)
+        size = max(16, int(self.config.runtime.lane_signature_size))
+        small = cv2.resize(gray, (size, size), interpolation=cv2.INTER_AREA)
+        return small.astype(np.float32)
+
+    @staticmethod
+    def _signature_similarity(sig_a: np.ndarray, sig_b: np.ndarray) -> float:
+        diff = cv2.absdiff(sig_a, sig_b)
+        mad = float(np.mean(diff)) / 255.0
+        return max(0.0, 1.0 - mad)
+
+    def _update_lane_model_if_needed(self, lane_frame: np.ndarray, timestamp: float) -> None:
         if self.frame_idx % self.config.runtime.lane_update_every_n_frames != 0:
             return
+
+        if self.config.runtime.lane_early_exit_enabled:
+            sig = self._lane_signature(lane_frame)
+            can_compare = self._lane_signature_prev is not None and self._last_lane_update_ts is not None
+            if can_compare:
+                prev_sig = self._lane_signature_prev
+                last_ts = self._last_lane_update_ts
+                if prev_sig is not None and last_ts is not None:
+                    sim = self._signature_similarity(sig, prev_sig)
+                    elapsed = max(0.0, timestamp - last_ts)
+                else:
+                    sim = 0.0
+                    elapsed = float("inf")
+                if (
+                    sim >= self.config.runtime.lane_similarity_threshold
+                    and elapsed < self.config.runtime.lane_force_update_sec
+                ):
+                    self.state.scale_source = "carry"
+                    return
 
         lane_mask = self.lane_segmenter.segment(lane_frame)
         h_mat = self.ipm.estimate_homography(lane_mask)
         bev_mask = self.ipm.warp_mask(lane_mask, h_mat)
         poly = fit_lane_polynomial(bev_mask, self.config.curve)
+
+        self._lane_signature_prev = self._lane_signature(lane_frame)
+        self._last_lane_update_ts = timestamp
 
         self.state.lane_mask = lane_mask
         self.state.homography = h_mat
@@ -122,7 +158,7 @@ class FreewaySpeedPipeline:
     def process_frame(self, frame: np.ndarray, timestamp: float) -> FrameState:
         self.frame_idx += 1
         lane_frame = self._prepare_lane_frame(frame)
-        self._update_lane_model_if_needed(lane_frame)
+        self._update_lane_model_if_needed(lane_frame, timestamp)
 
         detections: list[Detection] = self.vehicle_detector.detect(frame)
         if self.config.tracking.tracker_backend == "bytetrack":
