@@ -20,6 +20,7 @@ from .perception import (
 )
 from .speed import SpeedEstimator
 from .tracking import ByteTrackTracker, SimpleByteLikeTracker
+from .traffic import TrafficAnalyzer
 from .types import Detection, FrameState, TrackedVehicle
 
 
@@ -38,6 +39,7 @@ class FreewaySpeedPipeline:
         else:
             self.tracker = SimpleByteLikeTracker(self.config.tracking)
         self.speed = SpeedEstimator(self.config.tracking)
+        self.traffic = TrafficAnalyzer(self.config.traffic, bev_width=self.config.ipm.bev_width)
 
         self.frame_idx = 0
         self.state = FrameState()
@@ -140,10 +142,22 @@ class FreewaySpeedPipeline:
                         scale_m_per_px=scale,
                     )
                     vehicle.speed_kmh = self.speed.update(tid, by, timestamp, poly, scale)
+                    vehicle.direction, vehicle.lane = self.traffic.update_vehicle(
+                        track_id=tid,
+                        timestamp=timestamp,
+                        bev_x=bx,
+                        bev_y=by,
+                        speed_kmh=vehicle.speed_kmh,
+                    )
 
             tracked.append(vehicle)
 
         self.state.tracked = tracked
+        traffic_snapshot = self.traffic.snapshot(timestamp)
+        self.state.lane_centers_departing = traffic_snapshot.lane_centers.get("Departing", tuple())
+        self.state.lane_centers_approaching = traffic_snapshot.lane_centers.get("Approaching", tuple())
+        self.state.lane_avg_speed_kmh = traffic_snapshot.lane_avg_speed_kmh
+        self.state.direction_avg_speed_kmh = traffic_snapshot.direction_avg_speed_kmh
         return self.state
 
 
@@ -157,6 +171,10 @@ def draw_overlay(frame: np.ndarray, state: FrameState) -> np.ndarray:
             text += f" | {obj.distance_m:.1f} m"
         if obj.speed_kmh is not None:
             text += f" | {obj.speed_kmh:.1f} km/h"
+        if obj.direction:
+            text += f" | {obj.direction}"
+        if obj.lane:
+            text += f" | {obj.lane}"
         cv2.putText(
             vis,
             text,
@@ -177,4 +195,58 @@ def draw_overlay(frame: np.ndarray, state: FrameState) -> np.ndarray:
             (255, 255, 0),
             2,
         )
+
+    y0 = 56
+    for direction in ("Departing", "Approaching"):
+        avg = state.direction_avg_speed_kmh.get(direction)
+        if avg is None:
+            continue
+        cv2.putText(
+            vis,
+            f"{direction} avg: {avg:.1f} km/h",
+            (20, y0),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (80, 255, 80),
+            2,
+        )
+        y0 += 24
+
+    # Right-side panel: per-vehicle lane layout for quick scan.
+    panel_w = min(420, max(280, vis.shape[1] // 3))
+    x0 = vis.shape[1] - panel_w - 10
+    y_panel = 12
+    panel_h = min(vis.shape[0] - 24, 28 + min(len(state.tracked), 18) * 20)
+    if panel_h > 40:
+        overlay = vis.copy()
+        cv2.rectangle(overlay, (x0, y_panel), (x0 + panel_w, y_panel + panel_h), (20, 20, 20), -1)
+        cv2.addWeighted(overlay, 0.42, vis, 0.58, 0, vis)
+        cv2.rectangle(vis, (x0, y_panel), (x0 + panel_w, y_panel + panel_h), (100, 230, 255), 1)
+        cv2.putText(
+            vis,
+            "Vehicle Layout: ID | Dir | Lane | Speed",
+            (x0 + 8, y_panel + 16),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.46,
+            (230, 255, 255),
+            1,
+        )
+
+        y = y_panel + 34
+        sorted_objs = sorted(state.tracked, key=lambda o: o.track_id)
+        for obj in sorted_objs[:18]:
+            direction = obj.direction or "Unknown"
+            lane = obj.lane or "Unknown"
+            speed_text = f"{obj.speed_kmh:.1f}" if obj.speed_kmh is not None else "-"
+            row = f"{obj.track_id:>3} | {direction[:10]:<10} | {lane[:11]:<11} | {speed_text:>5}"
+            cv2.putText(
+                vis,
+                row,
+                (x0 + 8, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.43,
+                (240, 245, 240),
+                1,
+            )
+            y += 20
     return vis

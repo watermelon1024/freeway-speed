@@ -51,3 +51,18 @@ tracking:
 
 runtime:
   lane_update_every_n_frames: 5
+
+traffic:
+  direction_lookback_sec: 0.5
+  direction_min_displacement_px: 10.0
+  calibration_warmup_sec: 20.0
+  calibration_min_samples: 80
+  lane_hist_bins: 50
+  lane_peak_prominence: 10.0
+  lane_match_max_distance_px: 40.0
+  lane_match_spacing_ratio: 0.85
+  lane_match_span_ratio: 0.20
+  flow_window_sec: 45.0
+  flow_sample_interval_sec: 1.0
+  dynamic_recalibration_interval_sec: 300.0
+  dynamic_recalibration_lookback_sec: 60.0

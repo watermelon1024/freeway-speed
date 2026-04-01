@@ -75,6 +75,10 @@ def run() -> None:
             "bev_y",
             "distance_m",
             "speed_kmh",
+            "direction",
+            "lane",
+            "departing_avg_speed_kmh",
+            "approaching_avg_speed_kmh",
             "scale_m_per_px",
             "scale_source",
             "lane_a",
@@ -105,6 +109,8 @@ def run() -> None:
             x1, y1, x2, y2 = obj.bbox
             bev_x = obj.bev_point[0] if obj.bev_point is not None else None
             bev_y = obj.bev_point[1] if obj.bev_point is not None else None
+            dep_avg = state.direction_avg_speed_kmh.get("Departing")
+            app_avg = state.direction_avg_speed_kmh.get("Approaching")
             log_writer.writerow(
                 [
                     frame_count,
@@ -121,6 +127,10 @@ def run() -> None:
                     bev_y,
                     obj.distance_m,
                     obj.speed_kmh,
+                    obj.direction,
+                    obj.lane,
+                    dep_avg,
+                    app_avg,
                     state.scale_m_per_px,
                     state.scale_source,
                     lane_a,
@@ -146,6 +156,10 @@ def run() -> None:
                     None,
                     None,
                     None,
+                    None,
+                    None,
+                    state.direction_avg_speed_kmh.get("Departing"),
+                    state.direction_avg_speed_kmh.get("Approaching"),
                     state.scale_m_per_px,
                     state.scale_source,
                     lane_a,

@@ -47,6 +47,8 @@ class TrackedVehicle:
     bev_point: Optional[tuple[float, float]] = None
     distance_m: Optional[float] = None
     speed_kmh: Optional[float] = None
+    direction: Optional[str] = None
+    lane: Optional[str] = None
 
 
 @dataclass
@@ -58,3 +60,7 @@ class FrameState:
     scale_m_per_px: Optional[float] = None
     scale_source: str = "default"
     tracked: list[TrackedVehicle] = field(default_factory=list)
+    lane_centers_departing: tuple[float, ...] = field(default_factory=tuple)
+    lane_centers_approaching: tuple[float, ...] = field(default_factory=tuple)
+    lane_avg_speed_kmh: dict[str, float] = field(default_factory=dict)
+    direction_avg_speed_kmh: dict[str, float] = field(default_factory=dict)

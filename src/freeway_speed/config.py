@@ -6,6 +6,8 @@ from typing import Any
 
 import yaml
 
+from .traffic import TrafficConfig
+
 
 @dataclass
 class PerceptionConfig:
@@ -81,6 +83,7 @@ class SystemConfig:
     calibration: CalibrationConfig
     tracking: TrackingConfig
     runtime: RuntimeConfig
+    traffic: TrafficConfig
 
 
 def _get(data: dict[str, Any], key: str, default: Any) -> Any:
@@ -101,6 +104,7 @@ def load_config(path: str | Path) -> SystemConfig:
     calibration_raw = raw.get("calibration", {})
     tracking_raw = raw.get("tracking", {})
     runtime_raw = raw.get("runtime", {})
+    traffic_raw = raw.get("traffic", {})
 
     lane_onnx_path = _get(perception_raw, "lane_onnx", "")
     if lane_onnx_path:
@@ -160,5 +164,24 @@ def load_config(path: str | Path) -> SystemConfig:
         ),
         runtime=RuntimeConfig(
             lane_update_every_n_frames=int(_get(runtime_raw, "lane_update_every_n_frames", 5)),
+        ),
+        traffic=TrafficConfig(
+            direction_lookback_sec=float(_get(traffic_raw, "direction_lookback_sec", 0.5)),
+            direction_min_displacement_px=float(_get(traffic_raw, "direction_min_displacement_px", 10.0)),
+            calibration_warmup_sec=float(_get(traffic_raw, "calibration_warmup_sec", 20.0)),
+            calibration_min_samples=int(_get(traffic_raw, "calibration_min_samples", 80)),
+            lane_hist_bins=int(_get(traffic_raw, "lane_hist_bins", 50)),
+            lane_peak_prominence=float(_get(traffic_raw, "lane_peak_prominence", 10.0)),
+            lane_match_max_distance_px=float(_get(traffic_raw, "lane_match_max_distance_px", 40.0)),
+            lane_match_spacing_ratio=float(_get(traffic_raw, "lane_match_spacing_ratio", 0.85)),
+            lane_match_span_ratio=float(_get(traffic_raw, "lane_match_span_ratio", 0.20)),
+            flow_window_sec=float(_get(traffic_raw, "flow_window_sec", 45.0)),
+            flow_sample_interval_sec=float(_get(traffic_raw, "flow_sample_interval_sec", 1.0)),
+            dynamic_recalibration_interval_sec=float(
+                _get(traffic_raw, "dynamic_recalibration_interval_sec", 300.0)
+            ),
+            dynamic_recalibration_lookback_sec=float(
+                _get(traffic_raw, "dynamic_recalibration_lookback_sec", 60.0)
+            ),
         ),
     )
