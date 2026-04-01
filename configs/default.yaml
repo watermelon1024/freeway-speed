@@ -39,7 +39,6 @@ calibration:
 
 tracking:
   tracker_backend: bytetrack
-  bt_params_yaml: ../custom_tracker.yaml
   bt_track_high_thresh: 0.15
   bt_track_low_thresh: 0.05
   bt_new_track_thresh: 0.2
