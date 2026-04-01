@@ -79,7 +79,11 @@ def estimate_scale_from_dashed_line(
     return scale
 
 
-def estimate_scale_from_lane_width(bev_mask: np.ndarray, cfg: CalibrationConfig) -> float | None:
+def estimate_scale_from_lane_width(
+    bev_mask: np.ndarray,
+    cfg: CalibrationConfig,
+    prev_scale_m_per_px: float | None = None,
+) -> float | None:
     h, w = bev_mask.shape[:2]
     y0 = int(max(0, min(h - 1, round(h * cfg.lane_hist_roi_start_ratio))))
     roi = bev_mask[y0:h, :]
@@ -93,35 +97,61 @@ def estimate_scale_from_lane_width(bev_mask: np.ndarray, cfg: CalibrationConfig)
     kernel = np.ones((9,), dtype=np.float32) / 9.0
     smooth = np.convolve(hist, kernel, mode="same")
 
-    peak_thresh = max(float(cfg.lane_peak_min_votes), float(np.percentile(smooth, 75)))
+    peak_thresh = max(float(cfg.lane_peak_min_votes), float(np.percentile(smooth, 70)))
     peaks: list[int] = []
     for i in range(1, w - 1):
         if smooth[i] >= peak_thresh and smooth[i] >= smooth[i - 1] and smooth[i] >= smooth[i + 1]:
             peaks.append(i)
-
     if len(peaks) < 2:
         return None
 
-    best_pair: tuple[int, int] | None = None
-    best_score = -1.0
-    for i in range(len(peaks)):
-        for j in range(i + 1, len(peaks)):
-            sep = peaks[j] - peaks[i]
-            if sep < cfg.lane_width_min_px or sep > cfg.lane_width_max_px:
-                continue
-            score = float(smooth[peaks[i]] + smooth[peaks[j]])
-            if score > best_score:
-                best_score = score
-                best_pair = (peaks[i], peaks[j])
+    def weighted_peak(pos: int) -> float:
+        p0 = max(0, pos - cfg.lane_peak_window_px)
+        p1 = min(w, pos + cfg.lane_peak_window_px + 1)
+        weights = smooth[p0:p1]
+        xs = np.arange(p0, p1, dtype=np.float32)
+        denom = float(np.sum(weights))
+        if denom <= 1e-6:
+            return float(pos)
+        return float(np.sum(xs * weights) / denom)
 
-    if best_pair is None:
+    expected_sep = None
+    if prev_scale_m_per_px is not None and prev_scale_m_per_px > 1e-6:
+        expected_sep = cfg.lane_width_m / prev_scale_m_per_px
+
+    best_sep: float | None = None
+    best_strength = -1.0
+
+    def pick_candidates(use_expected_gate: bool) -> tuple[float | None, float]:
+        local_best_sep: float | None = None
+        local_best_strength = -1.0
+        for i in range(len(peaks)):
+            for j in range(i + 1, len(peaks)):
+                left_x = weighted_peak(peaks[i])
+                right_x = weighted_peak(peaks[j])
+                sep = right_x - left_x
+                if sep < cfg.lane_width_min_px or sep > cfg.lane_width_max_px:
+                    continue
+                if sep <= (cfg.lane_width_min_px + 2) or sep >= (cfg.lane_width_max_px - 2):
+                    continue
+                if use_expected_gate and expected_sep is not None:
+                    if sep < expected_sep * 0.6 or sep > expected_sep * 1.8:
+                        continue
+
+                strength = float(smooth[peaks[i]] + smooth[peaks[j]])
+                if strength > local_best_strength:
+                    local_best_strength = strength
+                    local_best_sep = sep
+        return local_best_sep, local_best_strength
+
+    best_sep, best_strength = pick_candidates(use_expected_gate=True)
+    if best_sep is None:
+        best_sep, best_strength = pick_candidates(use_expected_gate=False)
+
+    if best_sep is None:
         return None
 
-    lane_width_px = float(best_pair[1] - best_pair[0])
-    if lane_width_px <= 1e-6:
-        return None
-
-    scale = cfg.lane_width_m / lane_width_px
+    scale = cfg.lane_width_m / best_sep
     if scale < cfg.min_scale_m_per_px or scale > cfg.max_scale_m_per_px:
         return None
     return scale

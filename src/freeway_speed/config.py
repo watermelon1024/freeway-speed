@@ -48,9 +48,11 @@ class CalibrationConfig:
     search_band_px: int = 10
     lane_width_m: float = 3.5
     lane_hist_roi_start_ratio: float = 0.55
-    lane_width_min_px: int = 120
+    lane_width_min_px: int = 70
     lane_width_max_px: int = 620
-    lane_peak_min_votes: int = 12
+    lane_peak_min_votes: int = 8
+    lane_peak_window_px: int = 8
+    scale_ema_alpha: float = 0.35
     min_scale_m_per_px: float = 0.01
     max_scale_m_per_px: float = 0.08
     default_scale_m_per_px: float = 0.025
@@ -72,7 +74,7 @@ class TrackingConfig:
 
 @dataclass
 class RuntimeConfig:
-    lane_update_every_n_frames: int = 5
+    lane_update_every_n_frames: int = 30
 
 
 @dataclass
@@ -143,9 +145,11 @@ def load_config(path: str | Path) -> SystemConfig:
             search_band_px=int(_get(calibration_raw, "search_band_px", 10)),
             lane_width_m=float(_get(calibration_raw, "lane_width_m", 3.5)),
             lane_hist_roi_start_ratio=float(_get(calibration_raw, "lane_hist_roi_start_ratio", 0.55)),
-            lane_width_min_px=int(_get(calibration_raw, "lane_width_min_px", 120)),
+            lane_width_min_px=int(_get(calibration_raw, "lane_width_min_px", 70)),
             lane_width_max_px=int(_get(calibration_raw, "lane_width_max_px", 620)),
-            lane_peak_min_votes=int(_get(calibration_raw, "lane_peak_min_votes", 12)),
+            lane_peak_min_votes=int(_get(calibration_raw, "lane_peak_min_votes", 8)),
+            lane_peak_window_px=int(_get(calibration_raw, "lane_peak_window_px", 8)),
+            scale_ema_alpha=float(_get(calibration_raw, "scale_ema_alpha", 0.35)),
             min_scale_m_per_px=float(_get(calibration_raw, "min_scale_m_per_px", 0.01)),
             max_scale_m_per_px=float(_get(calibration_raw, "max_scale_m_per_px", 0.08)),
             default_scale_m_per_px=float(_get(calibration_raw, "default_scale_m_per_px", 0.025)),
@@ -163,7 +167,7 @@ def load_config(path: str | Path) -> SystemConfig:
             max_speed_kmh=float(_get(tracking_raw, "max_speed_kmh", 180.0)),
         ),
         runtime=RuntimeConfig(
-            lane_update_every_n_frames=int(_get(runtime_raw, "lane_update_every_n_frames", 5)),
+            lane_update_every_n_frames=int(_get(runtime_raw, "lane_update_every_n_frames", 30)),
         ),
         traffic=TrafficConfig(
             direction_lookback_sec=float(_get(traffic_raw, "direction_lookback_sec", 0.5)),

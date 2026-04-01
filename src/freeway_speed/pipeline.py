@@ -91,16 +91,33 @@ class FreewaySpeedPipeline:
         if poly is not None:
             scale = estimate_scale_from_dashed_line(bev_mask, poly, self.config.calibration)
             if scale is not None:
-                self.state.scale_m_per_px = scale
+                prev = self.state.scale_m_per_px
+                if prev is None:
+                    self.state.scale_m_per_px = scale
+                else:
+                    alpha = self.config.calibration.scale_ema_alpha
+                    self.state.scale_m_per_px = (1.0 - alpha) * prev + alpha * scale
                 self.state.scale_source = "dashed"
             else:
-                lane_width_scale = estimate_scale_from_lane_width(bev_mask, self.config.calibration)
+                lane_width_scale = estimate_scale_from_lane_width(
+                    bev_mask,
+                    self.config.calibration,
+                    prev_scale_m_per_px=self.state.scale_m_per_px,
+                )
                 if lane_width_scale is not None:
-                    self.state.scale_m_per_px = lane_width_scale
+                    prev = self.state.scale_m_per_px
+                    if prev is None:
+                        self.state.scale_m_per_px = lane_width_scale
+                    else:
+                        alpha = self.config.calibration.scale_ema_alpha
+                        self.state.scale_m_per_px = (1.0 - alpha) * prev + alpha * lane_width_scale
                     self.state.scale_source = "lane_width"
                 else:
-                    self.state.scale_m_per_px = self.config.calibration.default_scale_m_per_px
-                    self.state.scale_source = "default"
+                    if self.state.scale_m_per_px is None:
+                        self.state.scale_m_per_px = self.config.calibration.default_scale_m_per_px
+                        self.state.scale_source = "default"
+                    else:
+                        self.state.scale_source = "carry"
 
     def process_frame(self, frame: np.ndarray, timestamp: float) -> FrameState:
         self.frame_idx += 1

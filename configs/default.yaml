@@ -30,9 +30,11 @@ calibration:
   search_band_px: 10
   lane_width_m: 3.5
   lane_hist_roi_start_ratio: 0.55
-  lane_width_min_px: 120
+  lane_width_min_px: 70
   lane_width_max_px: 620
-  lane_peak_min_votes: 12
+  lane_peak_min_votes: 8
+  lane_peak_window_px: 8
+  scale_ema_alpha: 0.35
   min_scale_m_per_px: 0.01
   max_scale_m_per_px: 0.08
   default_scale_m_per_px: 0.025
@@ -50,7 +52,7 @@ tracking:
   max_speed_kmh: 180.0
 
 runtime:
-  lane_update_every_n_frames: 5
+  lane_update_every_n_frames: 30
 
 traffic:
   direction_lookback_sec: 0.5
