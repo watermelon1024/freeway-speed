@@ -1,7 +1,7 @@
 perception:
   vehicle_backend: yolo
   lane_backend: onnx
-  yolo_model: yolov8n.pt
+  yolo_model: yolo26s.pt
   yolo_classes: [car, bus, truck]
   yolo_conf: 0.10
   yolo_iou: 0.45
